@@ -1,0 +1,7 @@
+Please run the codes with the sequence numbered on the front of the naming convention of the files:
+
+It goes through from individual 5 subject areas in R and then the joining part in Julia and 
+then finally linking the suburbs with the geocodes scrapped from API.
+
+Some of the raw datasets are not available for automated downloading through the codes,
+so please download the raw csv files from the separate folder "raw data - to run the codes" before running the all the codes.

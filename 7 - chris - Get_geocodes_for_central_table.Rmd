@@ -1,0 +1,73 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+#authored Chris, get google geocode for master/central list of suburbs. 
+
+library(leaflet)
+library(leaflet.extras)
+library(rgdal)
+library(BBmisc)
+library(tidyverse)
+```
+
+
+```{r}
+#get suburb latitude and longitude from google 
+library(ggmap)
+register_google(key = "AIzaSyAI6fYw-7DuUOs7K0rZtBen9Pk-UzUYjEs")
+
+
+```
+
+```{r}
+combined_data = read.csv("final_combined.csv")
+```
+
+```{r}
+#get suburb name
+suburbs = tibble(suburb = combined_data$suburb)
+```
+
+```{r}
+#get appropriate input for google api 
+google_input = tibble(City_Country = rep("Christchurch, New Zealand", nrow(combined_data)))
+
+
+google_input2 = cbind(suburbs, google_input)
+
+#get suburb names address.  
+
+google_input2 = google_input2 %>% mutate(complete_input = paste(suburb, City_Country))
+
+google_input2
+```
+
+
+
+
+```{r}
+# run the geocode function from ggmap package with google to get longitude and latitude. 
+suburbs_ggmap <- geocode(location = google_input2$complete_input, output = "more", source = "google")
+
+
+```
+
+
+```{r}
+#get original list of suburbs for df and join with central dataset. 
+
+#make dataframe for export 
+suburb_geocode_df = tibble(suburb = combined_data$suburb, Address = suburbs, latitude = suburbs_ggmap$lat, longitude = suburbs_ggmap$lon)
+
+```
+
+
+```{r}
+# write.csv(suburb_geocode_df, "suburbs_google_geocode.csv", row.names = FALSE)
+```
+

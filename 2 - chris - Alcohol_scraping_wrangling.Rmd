@@ -1,0 +1,313 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(rvest)
+library(tidyverse)
+
+#collect table from webpage
+url <- 'https://ccc.govt.nz/consents-and-licences/business-licences-and-consents/alcohol/alcohol-licence-public-notification'
+webpage <- read_html(url)
+Table_Alcohol <- html_nodes(webpage,'table') %>% html_table()
+
+Table_Alcohol
+```
+
+
+```{r}
+Table_Alcohol2 = data.frame(Table_Alcohol)
+
+#separate address column of majority into Suburb and city
+Table_Alcohol3 = separate(data = Table_Alcohol2, col = Address, into = c("Address", "Suburb", "City"), sep = "\r\n")
+
+
+```
+
+
+
+```{r}
+#filter to dataframe of ones for whom previous code did not work.  
+filtering = Table_Alcohol3 %>% 
+  filter_all(any_vars(is.na(Suburb)))
+
+Table_Alcohol4 = Table_Alcohol3 %>% 
+  filter_all(any_vars(!is.na(Suburb)))
+
+#Enter christchurch into new column. 
+filtering$City = str_sub(filtering$Address, -12)
+```
+
+
+```{r}
+#filter into two dataframes into those that do not have christchruch in address e.g. Akaroa. 
+non_chch = filtering %>% filter(City != "Christchurch")
+filtering2 = filtering %>% filter(City == "Christchurch")
+
+
+#filter out christchurch and suburb out of address and into suburb
+filtering2 = filtering2 %>% mutate(Address = word(Address, 1, -2))
+filtering2 = filtering2 %>% mutate(Suburb = word(Address, 4, -1))
+filtering2 = filtering2 %>% mutate(Address = word(Address, 1, 3))
+
+
+dim(filtering2)
+```
+
+
+```{r}
+#filter non_chch suburb out of address and into suburb
+non_chch2 = non_chch[-1,]
+rownames(non_chch2) <- NULL
+
+non_chch2[1:3, ] = non_chch2[1:3, ] %>% mutate(City = word(Address, 4, -1))
+non_chch2[4:5, ] = non_chch2[4:5, ] %>% mutate(City = word(Address, 5, -1))
+
+#get rid of suburb from address
+non_chch3 = non_chch2
+non_chch3[1:3, ] = non_chch2[1:3, ] %>% mutate(Address = word(Address, 1, 3))
+non_chch3[4:5, ] = non_chch2[4:5, ] %>% mutate(Address = word(Address, 1, 4))
+
+```
+
+```{r}
+#fill missing city with town e.g. Akaroa. 
+Table_Alcohol5 = Table_Alcohol4 %>% filter(!is.na(City))
+cityNA = Table_Alcohol4 %>% filter(is.na(City))
+cityNA2 = cityNA %>% mutate(City = word(Suburb, 1, -1))
+cityNA2$Suburb = NA
+
+Table_Alcohol5
+```
+
+```{r}
+
+#Join separate dataframes together 
+Table_Alcohol_final = rbind(Table_Alcohol5, filtering2, non_chch3, cityNA2) %>% 
+  rename(City_or_Town = City)
+
+
+
+##get rid of ws###
+Table_Alcohol_final = Table_Alcohol_final %>% 
+  mutate(across(where(is.character), str_trim))
+
+
+```
+
+
+```{r}
+#maker corrections to suburb names. 
+
+Table_Alcohol_final$Suburb[Table_Alcohol_final$Suburb == "Road Redwood"] <- "Redwood"
+Table_Alcohol_final$Address[Table_Alcohol_final$Address == "340 Main North"] <- "340 Main North Road"
+
+Table_Alcohol_final$Suburb[Table_Alcohol_final$Suburb == "Road Papanui"] <- "Papanui"
+Table_Alcohol_final$Address[Table_Alcohol_final$Address == "17 Main North"] <- "17 Main North Road"
+Table_Alcohol_final$Address[Table_Alcohol_final$Address == "71 Main North"] <- "71 Main North Road"
+
+
+Table_Alcohol_final$Suburb[Table_Alcohol_final$Suburb == "Riccarton Park"] <- "Riccarton"
+Table_Alcohol_final$Suburb[Table_Alcohol_final$Suburb == "North Linwood"] <- "Linwood"
+
+Table_Alcohol_final
+```
+
+
+```{r}
+#get the total alcohol licenses for each suburb. 
+Total_licences = Table_Alcohol_final %>% 
+  group_by(Suburb) %>%
+  summarise(n()) %>%
+  rename(total_licences = "n()", suburb = Suburb) 
+```
+
+
+```{r}
+#get the the number of each type of licence for each suburb e.g., Ricrration, off-license = 10..
+License_type = Table_Alcohol_final %>% 
+  group_by(Suburb, Application.and.licence.type) %>%
+  summarise(n())
+
+License_type = License_type %>% pivot_wider(names_from = Application.and.licence.type, values_from = 'n()')
+License_type = License_type %>% select(-Suburb) %>% mutate_all(~replace(., is.na(.), 0))
+```
+
+
+```{r}
+#Combine different variations of licenses to reduce the number of columns. 
+License_type = License_type %>%
+  mutate(on_licence = rowSums(across(contains("on-"))), .keep = "unused") %>%
+  mutate(off_licence = rowSums(across(contains("off-"))), .keep = "unused") %>% 
+  mutate(club_licence = rowSums(across(contains("Club "))), .keep = "unused") %>% 
+  rename(suburb = Suburb)
+
+head(License_type)
+
+License_type
+```
+
+```{r}
+#Get type of business count for each suburb 
+Business_type = Table_Alcohol_final %>% 
+  group_by(Suburb, Type.of.business) %>%
+  summarise(n())
+
+#widen one row per suburb 
+Business_type = Business_type %>% pivot_wider(names_from = Type.of.business, values_from = 'n()')
+Business_type = Business_type %>% select(-Suburb) %>% mutate_all(~replace(., is.na(.), 0))
+```
+
+
+```{r}
+#Get type of business count for each suburb 
+Business_type = Table_Alcohol_final %>% 
+  group_by(Suburb, Type.of.business) %>%
+  summarise(n())
+
+#widen one row per suburb 
+Business_type = Business_type %>% pivot_wider(names_from = Type.of.business, values_from = 'n()')
+Business_type = Business_type %>% select(-Suburb) %>% mutate_all(~replace(., is.na(.), 0))
+
+#Combine different variations of licenses to reduce the number of columns. 
+Business_type = Business_type %>%
+  mutate(restaurants = rowSums(across(contains("restaurant"))), .keep = "unused") %>%
+  mutate(grocery_or_supermakets = rowSums((across(c("Off- grocery", "Off- supermarket")))), .keep = "unused") %>%
+  mutate(taverns_bars_nightclubs = rowSums((across(c("On- tavern", "On- nightclub", "Off- tavern across the bar sales")))), .keep = "unused") %>%
+  mutate(hotels = rowSums((across(c("On- hotel", "Off- hotel")))), .keep = "unused") %>%
+  mutate(art_galleries = rowSums((across(c("On- art studio", "On- gallery", "Art Gallery and Function Centre")))), .keep = "unused") %>%
+  mutate(sports_clubs = rowSums((across(contains("Club ")))), .keep = "unused") %>%
+  mutate(cinemas = rowSums((across(contains("inema")))), .keep = "unused") %>%
+  mutate(retirement_village = rowSums((across(contains("Retirement")))), .keep = "unused")
+
+#second reduction of business type columsn 
+Business_type = Business_type %>%
+  mutate(bottle_or_wine_stores = rowSums(across(contains("tore"))), .keep = "unused") %>%
+  mutate(sports_clubs = rowSums(across(c("sports_clubs", "On- Sports Centre", "On Ice Skating Arena"))), .keep = "unused") %>%
+  mutate(other = rowSums(across(c("Off- remote sales", "Off- other not otherwise specified", "Complimentary", "Off Licence Complimentary", "On- polytechnic", "On- caterer", "On- conveyance", "Performance Venue", "On- adult premises", "retirement_village"))), .keep = "unused") %>%
+  mutate(winery_or_breweries = rowSums(across(c("Off- winery - cellar door", "Off- brewery door sales"))), .keep = "unused") %>%
+  rename(function_centres = "On- function centre") %>%
+  rename(suburb = "Suburb")
+
+#add a suffix for later combination with others data. 
+colnames(Business_type)[2:12] <- paste(colnames(Business_type[2:12]), "licence", sep = "_")
+
+head(Business_type)
+
+```
+
+
+```{r}
+
+#join the three dataframes to collect the different types of suburb information. 
+suburb_lvl = left_join(Total_licences, License_type, by = "suburb")
+suburb_lvl = left_join(suburb_lvl, Business_type, by = "suburb")
+suburb_lvl %>% select(suburb, total_licences, bottle_or_wine_stores_licence, restaurants_licence)
+
+# Table_Alcohol_final %>% filter(City_or_Town != "Christchurch")
+suburb_lvl = suburb_lvl[1:59,]
+```
+
+
+```{r}
+#write data to file 
+suburb_lvl %>%
+  write_csv("suburb_lvl.csv")
+
+# Table_Alcohol_final %>%
+#   write_csv("CCC_Alcohol_licenses.csv")
+
+```
+
+
+```{r}
+
+########NEXT SECTION: GEOCODING and VISUALIZATION#####
+
+# install.packages("leaflet")
+# install.packages("rgdal")
+# install.packages("BBmisc")
+
+library(leaflet)
+library(leaflet.extras)
+library(rgdal)
+library(BBmisc)
+library(tidyverse)
+
+#get suburb latitude and longitude from google 
+library(ggmap)
+register_google(key = "AIzaSyAI6fYw-7DuUOs7K0rZtBen9Pk-UzUYjEs")
+
+#get suburb names. 
+suburbs = tibble(suburb = suburb_lvl$suburb)
+google_input = tibble(City_Country = rep("Christchurch, New Zealand", nrow(suburb_lvl)))
+google_input2 = cbind(suburbs, google_input)
+google_input2 = google_input2 %>% mutate(complete_input = paste(suburb, City_Country))
+
+```
+
+```{r}
+#read saved geocodes file and comment out geocode steps if you don't want to use google api each time. 
+# google = read.csv("suburbs_google_geocode.csv")
+```
+
+
+
+```{r}
+# run the geocode function from ggmap package with google to get longitude and latitude. 
+suburbs_ggmap <- geocode(location = google_input2$complete_input, output = "more", source = "google")
+suburb_geocode_df = tibble(suburb = suburbs, latitude = suburbs_ggmap$lat, longitude = suburbs_ggmap$lon)
+google = suburb_geocode_df
+# write.csv(suburb_geocode_df, "suburbs_google_geocode.csv")
+```
+
+
+```{r}
+
+#get intensity data, fix outliers and transform for better visualization. 
+intensity = suburb_lvl$total_licences
+intensity_outliers_rm = intensity
+
+intensity_outliers_rm[13] = 35
+intensity2 = normalize(intensity_outliers_rm, method="range")
+```
+
+
+```{r}
+#generate map and add heatmap for suburbs. 
+m <- leaflet() %>% setView(lng = 172.63529, lat = -43.51171 , zoom = 12)
+m %>% addTiles() %>% addHeatmap(lng=google$longitude, lat=google$latitude, blur=20, intensity=intensity2, radius = 30)
+```
+
+
+```{r}
+#generate longitude and latitude for the address of each entry of the alcohol licensing table. 
+CCC_Alc = Table_Alcohol_final
+Addresses_df = tibble(Country = rep("New Zealand", nrow(CCC_Alc)))
+df = CCC_Alc %>% select(Address, Suburb, City_or_Town)
+Addresses_df = cbind(Addresses_df, df)
+Addreses_df2 = Addresses_df %>% mutate(complete_address = paste(Address, Suburb, City_or_Town, Country))
+addresses_ggmap <- geocode(location = Addreses_df2$complete_address, output = "latlon", source = "google")
+```
+
+```{r}
+
+#join with dataframe. 
+CCC_Alc2 = CCC_Alc %>% cbind(addresses_ggmap)
+
+```
+
+```{r}
+# write_csv(CCC_Alc2, "Alcohol_Licences_CCC.csv")
+```
+
+
+```{r}
+
+#map taverns 
+t <- leaflet() %>% setView(lng = 172.63529, lat = -43.51171 , zoom = 12)
+t %>% addTiles() %>% addMarkers(lng = CCC_Alc2[CCC_Alc2$Type.of.business == "On- tavern", "lon"], lat = CCC_Alc2[CCC_Alc2$Type.of.business == "On- tavern", "lat"])
+
+```
+
